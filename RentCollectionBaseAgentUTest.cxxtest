@@ -1,0 +1,57 @@
+#include <cxxtest/TestSuite.h>
+#include <opencog/attention/WARentCollectionAgent.h>
+#include <opencog/atomspace/AtomSpace.h>
+#include <opencog/attentionbank/bank/AttentionBank.h>
+#include <opencog/cogserver/server/CogServer.h>
+#include <opencog/util/Config.h>
+//NB:only the STI test is setup
+using namespace opencog;
+
+class RentCollectionBaseAgentSTITest : public CxxTest::TestSuite
+{
+private:
+    AtomSpace* as;
+    CogServer* cogServer;
+    RentCollectionBaseAgent* rentCollectionAgent;
+    AttentionBank* _bank;
+
+public:
+    void setUp()
+    {
+        cogServer = &cogserver();
+        config().set("MODULES", "opencog/attention/libattention.so");
+        cogServer->loadModules();
+        config().set("MODULES", "libagents.so");
+
+        as = &cogserver().getAtomSpace();
+        rentCollectionAgent = new RentCollectionBaseAgent(*cogServer);
+        rentCollectionAgent->load_params(); // Ensure parameters are loaded
+    }
+
+    void tearDown()
+    {
+        delete rentCollectionAgent;
+        cogServer->stop();
+    }
+
+    void testCalculateSTIRent()
+    {
+        // Set mock STI funds for testing
+        _bank = &attentionbank(as);
+
+        // Scenario 1: Funds are lower than target, expect positive rent
+        _bank->setSTIFunds(100.0);  // Mock funds(< target)
+        AttentionValue::sti_t rent = rentCollectionAgent->calculate_STI_Rent();
+        TS_ASSERT(rent > 0); 
+
+        // Scenario 2: Funds are equal to the target, expect rent to be STIAtomRent
+        _bank->setSTIFunds(rentCollectionAgent->targetSTI); // fund=trget
+        rent = rentCollectionAgent->calculate_STI_Rent();
+        TS_ASSERT_EQUALS(rent, rentCollectionAgent->STIAtomRent); // Rent should be STIAtomRent
+
+        // Scenario 3: Funds are higher than target, expect rent to be 0
+        _bank->setSTIFunds(500.0); // funds > target
+        rent = rentCollectionAgent->calculate_STI_Rent();
+        TS_ASSERT_EQUALS(rent, 0); 
+    }
+};

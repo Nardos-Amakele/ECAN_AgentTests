@@ -1,0 +1,99 @@
+#include <cxxtest/TestSuite.h>
+#include <opencog/attention/AttentionBank.h>
+#include <opencog/atomspace/AtomSpace.h>
+#include <opencog/cogserver/server/CogServer.h>
+#include <opencog/attention/attentionbank/types/atom_types.h>
+#include <opencog/atoms/base/Link.h>
+#include <opencog/atoms/atom_types/NameServer.h>
+#include <opencog/attention/AttentionModule.h>
+#include <opencog/attention/HebbianCreationAgent.h>
+
+using namespace opencog;
+
+class HebbianCreationAgentUTest : public CxxTest::TestSuite
+{
+private:
+    CogServer* cogServer;
+    AtomSpace* as;
+    AttentionBank* bank;
+    HebbianCreationAgent* hebbianAgent;
+
+public:
+    void setUp()
+    {
+        cogServer = &cogserver();
+        config().set("MODULES", "opencog/attention/libattention.so");
+        cogServer->loadModules();
+        config().set("MODULES", "libagents.so");
+
+        as = &cogserver().getAtomSpace();
+        bank = &attentionbank(as);
+
+        // Create the HebbianCreationAgent
+        hebbianAgent = new HebbianCreationAgent(*cogServer);
+
+        // Create sample atoms
+        Handle atom1 = as->add_node(CONCEPT_NODE, "Atom1");
+        Handle atom2 = as->add_node(CONCEPT_NODE, "Atom2");
+        Handle atom3 = as->add_node(CONCEPT_NODE, "Atom3");
+
+        // Simulate some atoms in the attentional focus
+        bank->stimulate(atom1, 100);
+        bank->stimulate(atom2, 100);
+        bank->stimulate(atom3, 100);
+    }
+
+    void tearDown()
+    {
+        delete hebbianAgent;
+        cogServer->stop();
+    }
+
+    void testHebbianLinkCreation()
+    {
+        HandleSeq initialLinks;
+        as->get_handles_by_type(initialLinks, LINK, true);
+
+        TS_ASSERT_EQUALS(initialLinks.size(), 0);  // to check there are no links yet 
+
+        hebbianAgent->run();
+
+        HandleSeq createdLinks;
+        as->get_handles_by_type(createdLinks, LINK, true);
+
+        // Ensure that new links have been created
+        TS_ASSERT_GREATER_THAN(createdLinks.size(), initialLinks.size());
+
+        // check if the link is ASYMMETRIC_HEBBIAN_LINK
+        int hebbianLinkCount = 0;
+        for (const Handle& link : createdLinks)
+        {
+            if (nameserver().isA(link->get_type(), HEBBIAN_LINK))
+            {
+                hebbianLinkCount++;
+            }
+        }
+
+        TS_ASSERT_GREATER_THAN(hebbianLinkCount, 0);
+    }
+
+    void testMaxLinks()
+    {
+        // Set maxLinkNum to 4
+        hebbianAgent->maxLinkNum = 3;
+
+        // create links
+        hebbianAgent->run();
+
+        //check the number of links for atom1 and 3
+
+        Handle atom1 = as->get_handle_by_name("Atom1");
+        IncomingSet iset1 = atom1->getIncomingSetByType(HEBBIAN_LINK);
+        TS_ASSERT_LESS_THAN_OR_EQUAL(iset1.size(), 3);
+
+        Handle atom2 = as->get_handle_by_name("Atom3");
+        IncomingSet iset2 = atom2->getIncomingSetByType(HEBBIAN_LINK);
+        TS_ASSERT_LESS_THAN_OR_EQUAL(iset2.size(), 3);
+        
+    }
+};
